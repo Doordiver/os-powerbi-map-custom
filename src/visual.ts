@@ -152,8 +152,8 @@ export class OSPowerBIVisual implements IVisual {
         
     this.UIManager = new OSPowerBIUIManager(this, options.element)
     this.selectionManager = this.host.createSelectionManager();
-    this.selectionManager.registerOnSelectCallback((ids:ISelectionId[]) => {
-      //console.log(ids);
+    this.selectionManager.registerOnSelectCallback((ids: ISelectionId[]) => {
+      this.UIManager.mapManager.updateSelection(ids);
     });
     this.converter = new OSMapsDataviewConverter(this.UIManager);
     this.geojson_builder = new OSMapsGeoJSONBuilder(this.UIManager);
@@ -189,6 +189,16 @@ export class OSPowerBIVisual implements IVisual {
     }
     else {await this.selectionManager.select(selectionHandles);}
   }
+
+      /**
+     * Shows Power BI's native context menu for a selected feature.
+     */
+    public async showFeatureContextMenu(
+      selectionId: ISelectionId,
+      position: { x: number; y: number }
+    ) {
+      await this.selectionManager.showContextMenu(selectionId, position);
+    }
 
     /**
    * Checks if a newer version of the visual is available on Github and updates

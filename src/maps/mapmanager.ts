@@ -17,7 +17,7 @@ import { OSPowerBIVisual } from "../visual";
 import ISelectionId = powerbi.extensibility.ISelectionId;
 import { OSPowerBIUIManager } from "../ui/uimanager";
 import { OSPowerBIReferenceLayerManager } from "./ReferenceLayerManager"
-import { ONS_ESRI_ATTRIB, GET_OS_ATTRIB, colours } from "../resources";
+import { ONS_ESRI_ATTRIB, GET_OS_ATTRIB, colours, IS_LIGHTWEIGHT_BUILD } from "../resources";
 import {LoggingTileLayer} from "./LoggingTileLayer";
 import {LoggableBounds} from "./LoggableBounds";
 import { LogRecord, LogRecordTypes } from "../logging/LoggingTypes";
@@ -192,6 +192,10 @@ export class OSPowerBIMapManager {
     }
     this.map.off("lasso.finished");
     this.map.on("lasso.finished", this.createLassoHandler());
+    this.map.on("click", async () => {
+        await this.clearMapSelection(true);
+        this.map?.closePopup();
+      });
     this.map.on("baselayerchange", (e) => {
       if(this.saveLayerTimeout) { this.cancelLayerAutosave() }
       this.saveLayerTimeout = setTimeout(function(lyrname) {
@@ -426,6 +430,19 @@ export class OSPowerBIMapManager {
     }
     this.layerControl && this.layerControl.remove();
     const mapSettings = this.settings.mapSettingsCard;
+    if (IS_LIGHTWEIGHT_BUILD) {
+      this.UIManager.addDevMessage("Building lightweight map with no basemap tiles.");
+
+      const mapOff = L.layerGroup();
+      mapOff.addTo(this.map);
+
+      this.layerControl = null;
+      this._currentBaseLayers = {
+        "Map Off": mapOff
+      };
+
+      return;
+    }
     this.UIManager.addDevMessage(`Building base layer control with api key: ${mapSettings.apiKey} (allows premium: ${this.hostVisual.keyAllowsPremiumData}, premium setting: ${mapSettings.usePremium})`);
     const srid = mapSettings.getSRID();
     const minzoom = mapSettings.getMinZoomLevel() - this.OVERZOOM_LEVELS;
@@ -491,6 +508,7 @@ export class OSPowerBIMapManager {
         bounds: mapSettings.getMaxBounds(),
       }
     );
+    const mapOff = L.layerGroup();
     /*const osgb_roads_backup = L.tileLayer(
           "https://api.os.uk/maps/raster/v1/zxy/Road_27700/{z}/{x}/{y}.png?key=" +
             mapSettings.apiKey,
@@ -504,11 +522,13 @@ export class OSPowerBIMapManager {
             "OS Outdoor": osgb_outdoor,
             "OS Light": osgb_light,
             "OS Leisure": osgb_leisure,
+            "Map Off": mapOff,
           }
         : {
             "OS Roads": osgb_roads,
             "OS Outdoor": osgb_outdoor,
             "OS Light": osgb_light,
+            "Map Off": mapOff,
           };
     
           this.layerControl = L.control.layers(
@@ -696,6 +716,38 @@ export class OSPowerBIMapManager {
     }
   }
 
+    /**
+     * Synchronises map feature highlighting with Power BI's selection state.
+     */
+    public updateSelection(selectionHandles: ISelectionId[]) {
+      this.map?.eachLayer((layer: any) => {
+        if (layer.feature instanceof OSMapsGeoJson) {
+          const feature = layer.feature as OSMapsGeoJson;
+
+          const isSelected = feature.selectionHandle
+            ? selectionHandles.some(handle =>
+                (feature.selectionHandle as unknown as powerbi.visuals.ISelectionId)
+                  .equals(handle as unknown as powerbi.visuals.ISelectionId)
+              )
+            : false;
+
+          feature.isSelected = isSelected;
+
+          layer.setStyle({
+            fillColor: isSelected
+              ? feature.selectionColour
+              : feature.fillColour,
+            color: isSelected
+              ? feature.selectionBorderColour
+              : feature.borderColour,
+            fillOpacity: feature.opacity,
+          });
+        }
+      });
+    }
+
+
+
   /**
    * Toggles the ONS attribution on the map.
    * @param turnOn True to show, false to hide.
@@ -851,7 +903,29 @@ export class OSPowerBIMapManager {
             });
           }
         }.bind(this),
-        click: function (e) {
+        // Toggle selection of the clicked feature.
+        click: async function (e) {
+          if (feature.selectionHandle) {
+            const wasSelected = feature.isSelected;
+
+            // Reset existing map highlighting.
+            await this.clearMapSelection(false);
+
+            if (wasSelected) {
+              // Clicking the selected feature again clears selection and closes its popup.
+              await this.hostVisual.applySelection([]);
+              this.map?.closePopup();
+              return;
+            } else {
+              // Select and highlight the newly clicked feature.
+              feature.isSelected = true;
+              layer.setStyle({
+                fillColor: feature.selectionColour,
+                color: feature.selectionBorderColour,
+              });
+              await this.hostVisual.applySelection([feature.selectionHandle]);
+            }
+          }
           // On click, we want to show a popup with content from all features at the clicked point, not just the top one, 
           // so we build the popup here rather than using bindPopup on the layer or PowerBI tooltips.
           // TODO extract to a separate function for neatness and potentially use for a hover handler as well          
@@ -910,6 +984,7 @@ export class OSPowerBIMapManager {
 
     if (!this.leafletPointsLayer && whichLayer == Layers.Points) {
       this.leafletPointsLayer = L.Proj.geoJson(undefined, {
+        bubblingMouseEvents: false,
         onEachFeature: onEachFeature.bind(this),
         // do not set renderer, it gets set at the level of the points to be canvas or not as appropriate
         pointToLayer: buildMarker.bind(this),
@@ -918,6 +993,7 @@ export class OSPowerBIMapManager {
     }
     if (!this.leafletFeaturesLayer && whichLayer == Layers.Features) {
       this.leafletFeaturesLayer = L.Proj.geoJson(undefined, {
+        bubblingMouseEvents: false,
         onEachFeature: onEachFeature.bind(this),
         renderer: this.renderingCanvas, // gets overridden for any points within the WKT features as described above
         pointToLayer: buildMarker.bind(this),
@@ -1186,6 +1262,18 @@ export class OSPowerBIMapManager {
               ${popupContent}
           </div>
           ${
+            feature.selectionHandle
+              ? `
+                <div class="leaflet-popup-content__buttons">
+                  <button
+                    class="leaflet-popup-content__paging-button"
+                    id="drillThroughFeature"
+                  >More...</button>
+                </div>
+              `
+              : ""
+          }
+          ${
             !isSingleFeature
               ? `
                   <div class="leaflet-popup-content__fixed-footer">
@@ -1210,7 +1298,7 @@ export class OSPowerBIMapManager {
   `;
     }
 
-    function attachEventListeners(popup) {
+    const attachEventListeners = (popup) => {
       const prevButton = popup
         .getElement()
         .querySelector("#prevFeature");
@@ -1237,7 +1325,30 @@ export class OSPowerBIMapManager {
           }
         });
       }
-    }
+
+      const drillThroughButton = popup
+        .getElement()
+        .querySelector("#drillThroughFeature");
+
+      if (drillThroughButton) {
+        drillThroughButton.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const feature = features[currentIndex];
+
+          if (feature.selectionHandle) {
+            this.hostVisual.showFeatureContextMenu(
+              feature.selectionHandle,
+              {
+                x: e.clientX,
+                y: e.clientY,
+              }
+            );
+          }
+        });
+      }
+    };
 
     // made this an arrow function so I could use lexical scope and access this more easily - seemed weird to extract it as a method on the class but can change if you disagree
     const updatePopupContent = () => {
@@ -1249,24 +1360,45 @@ export class OSPowerBIMapManager {
           }
         };
 
-    // Close any existing popup
-    if (this.popup) {
-      this.popup.remove(); // Use remove() to ensure the popup is properly closed
-    }
+    // Remove the previous popup without treating it as a user deselection.
+        if (this.popup) {
+          const oldPopup = this.popup;
+          this.popup = null;
+          oldPopup.remove();
+        }
 
-    // Create and open the new popup
-    this.popup = L.popup()
-      .setLatLng(latlng)
-      .setContent(generatePopupContent())
-      .openOn(this.map);
+        this.popup = L.popup()
+          .setLatLng(latlng)
+          .setContent(generatePopupContent())
+          .openOn(this.map);
 
-    // Initial attachment of event listeners
-    attachEventListeners(this.popup);
+        const currentPopup = this.popup;
 
-    return this.popup;
-  }
- 
-}
+        currentPopup.on("remove", () => {
+          // Only clear the selection if this is still the active popup.
+          if (this.popup === currentPopup) {
+            this.popup = null;
+
+            // Avoid clearing again if the selection was already cleared elsewhere.
+            let hasSelectedFeature = false;
+
+            this.map?.eachLayer((layer: any) => {
+              if (layer.feature instanceof OSMapsGeoJson && layer.feature.isSelected) {
+                hasSelectedFeature = true;
+              }
+            });
+
+            if (hasSelectedFeature) {
+              void this.clearMapSelection(true);
+            }
+          }
+        });
+
+        attachEventListeners(currentPopup);
+        return currentPopup;
+        
+        }
+      }
 
 interface LassoHandlerFinishedEventData {
     originalEvent: MouseEvent;

@@ -6,6 +6,9 @@ import pbiviz from "../pbiviz.json"
  * Includes URLs, color palettes, and other static resources.
  */
 export const visualVersion = pbiviz.visual.version;
+
+// Set to true when building the lightweight version without OS basemap tiles.
+export const IS_LIGHTWEIGHT_BUILD = false;
 // connection string we insert in at build
 export const APP_INSIGHTS_CONNECTION_STRING = '{{APP_INSIGHTS}}';
 
