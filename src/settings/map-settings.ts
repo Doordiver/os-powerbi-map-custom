@@ -1,6 +1,6 @@
 import { formattingSettings} from "powerbi-visuals-utils-formattingmodel";
 import FormattingSettingsSlice = formattingSettings.Slice;
-import { colours } from "../resources";
+import { colours, IS_LIGHTWEIGHT_BUILD } from "../resources";
 
 /** How the map extent responds to the data changing. */
 export enum AutoZoomMode {
@@ -145,10 +145,12 @@ export class MapSettingsCard extends formattingSettings.SimpleCard {
   displayName: string = "Map Settings";
   /** Array of formatting setting slices for this card. */
   slices: Array<FormattingSettingsSlice> = [
-    this.apiKeyField, 
-    this.usePremiumData, 
-    this.useOSGB_UI, 
-    //this.zoomPanSelect_UI, // uncomment to reenable zoom/pan select
+    ...(IS_LIGHTWEIGHT_BUILD ? [] : [
+      this.apiKeyField,
+      this.usePremiumData
+    ]),
+    this.useOSGB_UI,
+    //this.zoomPanSelect_UI,
     this.autoZoomMode_UI,
     this.showLegend_UI,
     this.showDebug_UI,

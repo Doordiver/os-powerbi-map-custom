@@ -10,8 +10,7 @@ import { LegendManager } from "../maps/legend";
 import DialogAction = powerbi.DialogAction;
 import {NotAuthorisedDialog} from "./authdialog";
 import {ApiAuthResult} from "../utils/auth"
-import {EXPIRY_DATE, ONS_ESRI_ATTRIB, GET_OS_ATTRIB} from "../resources"
-import { visualVersion } from "../resources";
+import { EXPIRY_DATE, ONS_ESRI_ATTRIB, GET_OS_ATTRIB, visualVersion, IS_LIGHTWEIGHT_BUILD } from "../resources";
 import { LogRecord, LogRecordTypes } from "../logging/LoggingTypes";
 import { UploadResult } from "../types/geocoding-types";
 
@@ -330,6 +329,9 @@ export class OSPowerBIUIManager {
    * @param updateId The update identifier.
    */
   public async apiKeyUpdated():Promise<boolean> {
+    if (IS_LIGHTWEIGHT_BUILD) {
+      return false;
+    }
     let newStatus: "free" | "premium" | "invalid";
     let statusChanged: boolean = false;
     if (this.visual.formattingSettings.apiKey.length === 0) {
@@ -395,12 +397,17 @@ export class OSPowerBIUIManager {
    * Determines if the map can be rendered.
    */
   private canRenderMap() {
-    // maybe implement additional logic here if needed
-    const result: boolean = this.visual.isAuthorised  && 
-      (this.visual.formattingSettings.apiKey.length>0) && 
-      (this.visual.keyStatus === "free" || this.visual.keyStatus === "premium");
-    this.addDevMessage(`canRenderMap check: keylength=${this.visual.formattingSettings.apiKey.length}, status=${this.visual.keyStatus}, 
-      isAuthorised='${this.visual.isAuthorised}', result=${result}`);
+    const hasValidApiKey = IS_LIGHTWEIGHT_BUILD ||
+      (
+        this.visual.formattingSettings.apiKey.length > 0 &&
+        (this.visual.keyStatus === "free" || this.visual.keyStatus === "premium")
+      );
+
+    const result: boolean = this.visual.isAuthorised && hasValidApiKey;
+
+    this.addDevMessage(`canRenderMap check: lightweight=${IS_LIGHTWEIGHT_BUILD}, keylength=${this.visual.formattingSettings.apiKey.length},
+      status=${this.visual.keyStatus}, isAuthorised='${this.visual.isAuthorised}', result=${result}`);
+
     return result;
   }
 
