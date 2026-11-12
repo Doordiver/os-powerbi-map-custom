@@ -110,8 +110,17 @@ export class OSPowerBIMapManager {
    * @param newSettings The new parsed settings.
    */
   updateSettings(newSettings: ParsedCardSettingsWrapper): void {
-    this.settings = newSettings;
-  }
+  this.settings = newSettings;
+
+  // Apply user-selected map appearance.
+  this.div.style.backgroundColor =
+    newSettings.mapSettingsCard.MapBackgroundColour;
+
+  this.div.style.border =
+    `1px solid ${newSettings.mapSettingsCard.MapBorderColour}`;
+
+  this.div.style.boxSizing = "border-box";
+}
 
   /**
    * Builds map options for Leaflet map creation.

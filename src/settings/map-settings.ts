@@ -112,6 +112,19 @@ export class MapSettingsCard extends formattingSettings.SimpleCard {
     value: true,
     description: "If selected then symbology fields (colour / size) will not be added to popups unless explicitly included in the popups field well."
   });
+    MapBackgroundColourUI = new formattingSettings.ColorPicker({
+    name: "mapBackgroundColour",
+    displayName: "Map background colour",
+    value: { value: "#FFFFFF" },
+    description: "Background colour of the map area."
+  });
+
+  MapBorderColourUI = new formattingSettings.ColorPicker({
+    name: "mapBorderColour",
+    displayName: "Map border colour",
+    value: { value: "#CCCCCC" },
+    description: "Border colour around the map area."
+  });
     ColourSelectedUI = new formattingSettings.ColorPicker({
     name: "selectionColour",
     value: { value: colours.CYAN_SELECT },
@@ -141,6 +154,8 @@ export class MapSettingsCard extends formattingSettings.SimpleCard {
     this.showDebug_UI,
     this.useMoreDetailedGeom_UI,
    // this.hideDefaultPopupFields_UI // uncomment to reenable hide default popup fields toggle
+    this.MapBackgroundColourUI,
+    this.MapBorderColourUI,
    this.ColourSelectedUI,
    this.ShowIdentifierInPopupUI
   ];
@@ -238,6 +253,8 @@ export class MapSettingsCard extends formattingSettings.SimpleCard {
   get hideDefaultPopupFields() { return this.hideDefaultPopupFields_UI.value}
    /** Gets the selected feature colour. */
   get ColourSelected() {return this.ColourSelectedUI.value.value};
+  get MapBackgroundColour() { return this.MapBackgroundColourUI.value.value; }
+  get MapBorderColour() { return this.MapBorderColourUI.value.value; }
   /** Gets whether to always show the identifier in popups. */
   get ShowIdentifierInPopup() { return this.ShowIdentifierInPopupUI.value};
 }
