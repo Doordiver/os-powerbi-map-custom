@@ -118,6 +118,12 @@ ColourSelectedUI = new formattingSettings.ColorPicker({
     displayName: "Selected feature colour",
     description: "Colour for features selected using the Lasso.",
   });
+  MapBackgroundColourUI = new formattingSettings.ColorPicker({
+    name: "mapBackgroundColour",
+    value: { value: "#FFFFFF" },
+    displayName: "Map Background Colour",
+    description: "Choose the background colour displayed behind the map features.",
+  });
   ShowIdentifierInPopupUI = new formattingSettings.ToggleSwitch({
     name: "alwaysShowIdentifier",
     displayName: "Show identifier in popups",
@@ -144,6 +150,7 @@ ColourSelectedUI = new formattingSettings.ColorPicker({
     this.useMoreDetailedGeom_UI,
    // this.hideDefaultPopupFields_UI // uncomment to reenable hide default popup fields toggle
    this.ColourSelectedUI,
+   this.MapBackgroundColourUI,
    this.ShowIdentifierInPopupUI
   ];
   /** Card description. */
@@ -240,6 +247,8 @@ ColourSelectedUI = new formattingSettings.ColorPicker({
   get hideDefaultPopupFields() { return this.hideDefaultPopupFields_UI.value}
    /** Gets the selected feature colour. */
   get ColourSelected() {return this.ColourSelectedUI.value.value};
+  /** Gets the selected map background colour. */
+  get MapBackgroundColour() { return this.MapBackgroundColourUI.value.value };
   /** Gets whether to always show the identifier in popups. */
   get ShowIdentifierInPopup() { return this.ShowIdentifierInPopupUI.value};
 }

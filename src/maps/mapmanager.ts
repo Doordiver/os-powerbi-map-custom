@@ -117,6 +117,8 @@ export class OSPowerBIMapManager {
 
   this.settings = newSettings;
   this.div.style.boxSizing = "border-box";
+  this.div.style.backgroundColor =
+    newSettings.mapSettingsCard.MapBackgroundColour || "#FFFFFF";
 }
 
   /**
@@ -676,11 +678,7 @@ export class OSPowerBIMapManager {
    * @param turnOn True to show, false to hide.
    */
   public toggleVisibility(turnOn: boolean) {
-    if (turnOn) {
-      this.div.setAttribute("style", "display: block");
-    } else {
-      this.div.setAttribute("style", "display: none");
-    }
+    this.div.style.display = turnOn ? "block" : "none";
   }
 
   /**
