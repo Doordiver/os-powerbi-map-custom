@@ -281,11 +281,15 @@
                 },
                 "selectionColour" : {
                     "displayName": "Colour of selected features",
-                    "type": {"fill": {"solid": {"color":true}}}
+                        "type": {"fill": {"solid": {"color":true}}}
                 },
                 "mapBackgroundColour": {
                     "displayName": "Map Background Colour",
-                    "type": {"fill": {"solid": {"color": true}}}
+                        "type": {"fill": {"solid": {"color": true}}}
+                },
+                "visualBackgroundColour": {
+                    "displayName": "Visual Background Colour",
+                        "type": {"fill": {"solid": {"color": true}}}
                 },
                 "alwaysShowIdentifier":{
                     "type": {

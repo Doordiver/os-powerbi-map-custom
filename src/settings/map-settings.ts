@@ -124,6 +124,12 @@ ColourSelectedUI = new formattingSettings.ColorPicker({
     displayName: "Map Background Colour",
     description: "Choose the background colour displayed behind the map features.",
   });
+  VisualBackgroundColourUI = new formattingSettings.ColorPicker({
+    name: "visualBackgroundColour",
+    value: { value: "#FFFFFF" },
+    displayName: "Visual Background Colour",
+    description: "Choose the background colour surrounding the map within the visual.",
+  });
   ShowIdentifierInPopupUI = new formattingSettings.ToggleSwitch({
     name: "alwaysShowIdentifier",
     displayName: "Show identifier in popups",
@@ -151,6 +157,7 @@ ColourSelectedUI = new formattingSettings.ColorPicker({
    // this.hideDefaultPopupFields_UI // uncomment to reenable hide default popup fields toggle
    this.ColourSelectedUI,
    this.MapBackgroundColourUI,
+   this.VisualBackgroundColourUI,
    this.ShowIdentifierInPopupUI
   ];
   /** Card description. */
@@ -249,6 +256,8 @@ ColourSelectedUI = new formattingSettings.ColorPicker({
   get ColourSelected() {return this.ColourSelectedUI.value.value};
   /** Gets the selected map background colour. */
   get MapBackgroundColour() { return this.MapBackgroundColourUI.value.value };
+  /** Gets the selected visual background colour. */
+  get VisualBackgroundColour() { return this.VisualBackgroundColourUI.value.value };
   /** Gets whether to always show the identifier in popups. */
   get ShowIdentifierInPopup() { return this.ShowIdentifierInPopupUI.value};
 }
