@@ -147,6 +147,11 @@ export class OSPowerBIUIManager {
     this.visual.receiveUploadedData(uploadResult);
   }
 
+  /** Applies the independently configured outer visual background colour. */
+  public setVisualBackgroundColour(colour: string) {
+    this.target.style.backgroundColor = colour || "#FFFFFF";
+  }
+
   /**
    * Toggles the notification dot on or off.
    * @param notificationDotOn Whether to show the notification dot.

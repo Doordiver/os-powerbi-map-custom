@@ -110,16 +110,15 @@ export class OSPowerBIMapManager {
    * @param newSettings The new parsed settings.
    */
   updateSettings(newSettings: ParsedCardSettingsWrapper): void {
+  // Formatting settings may not be available during initialisation.
+  if (!newSettings || !newSettings.mapSettingsCard) {
+    return;
+  }
+
   this.settings = newSettings;
-
-  // Apply user-selected map appearance.
-  this.div.style.backgroundColor =
-    newSettings.mapSettingsCard.MapBackgroundColour;
-
-  this.div.style.border =
-    `1px solid ${newSettings.mapSettingsCard.MapBorderColour}`;
-
   this.div.style.boxSizing = "border-box";
+  this.div.style.backgroundColor =
+    newSettings.mapSettingsCard.MapBackgroundColour || "#FFFFFF";
 }
 
   /**
@@ -288,7 +287,10 @@ export class OSPowerBIMapManager {
   getLogData() {
     let lyrLogs = {};
     for (const lyrname in this._currentBaseLayers) {
-      lyrLogs[lyrname] = this._currentBaseLayers[lyrname].getLogInfo();
+      const baseLayer = this._currentBaseLayers[lyrname];
+      lyrLogs[lyrname] = typeof baseLayer.getLogInfo === "function"
+        ? baseLayer.getLogInfo()
+        : {};
       lyrLogs[lyrname].srid = this.settings.mapSettingsCard.getSRID()
     }
     lyrLogs['nMapMoves'] = this.recentZoomPanCount;
@@ -449,7 +451,6 @@ export class OSPowerBIMapManager {
       this._currentBaseLayers = {
         "Map Off": mapOff
       };
-
       return;
     }
     this.UIManager.addDevMessage(`Building base layer control with api key: ${mapSettings.apiKey} (allows premium: ${this.hostVisual.keyAllowsPremiumData}, premium setting: ${mapSettings.usePremium})`);
@@ -517,13 +518,6 @@ export class OSPowerBIMapManager {
         bounds: mapSettings.getMaxBounds(),
       }
     );
-    const mapOff = L.layerGroup();
-    /*const osgb_roads_backup = L.tileLayer(
-          "https://api.os.uk/maps/raster/v1/zxy/Road_27700/{z}/{x}/{y}.png?key=" +
-            mapSettings.apiKey,
-          { attribution: attribution, minZoom: 10, maxZoom: maxzoom }
-        );*/
-
     const layers =
       mapSettings.useOSGB && mapSettings.usePremium && this.hostVisual.keyAllowsPremiumData
         ? {
@@ -531,13 +525,13 @@ export class OSPowerBIMapManager {
             "OS Outdoor": osgb_outdoor,
             "OS Light": osgb_light,
             "OS Leisure": osgb_leisure,
-            "Map Off": mapOff,
+            "Map Off": L.layerGroup(),
           }
         : {
             "OS Roads": osgb_roads,
             "OS Outdoor": osgb_outdoor,
             "OS Light": osgb_light,
-            "Map Off": mapOff,
+            "Map Off": L.layerGroup(),
           };
     
           this.layerControl = L.control.layers(
@@ -548,6 +542,7 @@ export class OSPowerBIMapManager {
     const initialLayer = layers[initialLayerName] || layers["OS Light"];
     this.layerControl.addTo(this.map);
     initialLayer.addTo(this.map);
+
     this._currentBaseLayers = layers;
   }
 
@@ -683,11 +678,7 @@ export class OSPowerBIMapManager {
    * @param turnOn True to show, false to hide.
    */
   public toggleVisibility(turnOn: boolean) {
-    if (turnOn) {
-      this.div.setAttribute("style", "display: block");
-    } else {
-      this.div.setAttribute("style", "display: none");
-    }
+    this.div.style.display = turnOn ? "block" : "none";
   }
 
   /**

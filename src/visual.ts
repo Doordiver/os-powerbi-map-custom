@@ -362,6 +362,7 @@ export class OSPowerBIVisual implements IVisual {
     );
 
     this.UIManager.mapManager.updateSettings(newSettingsWrapper);
+    this.UIManager.setVisualBackgroundColour(newSettingsWrapper.mapSettingsCard.VisualBackgroundColour);
     this.formattingSettings.updateControlsDisplay(this.controlsVisibility);
     
     let boundsForNewMap: L.LatLngBounds = this.getBoundsForNewMap();
