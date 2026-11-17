@@ -70,6 +70,7 @@ export class OSPowerBIMapManager {
   /** Set while we move the map ourselves, so the resulting leaflet events aren't read as a user gesture. */
   private suppressMoveTracking: boolean = false;
   private zoomToDataControl: L.Control;
+  private visualFillOpacity: number = 1;
 
 
   /**
@@ -277,6 +278,67 @@ export class OSPowerBIMapManager {
       return container;
     };
     return control;
+  }
+
+  /**
+   * Builds the fill-opacity slider for placement beneath the map legend.
+   */
+  public buildFillOpacityControl(): HTMLElement {
+    const container = document.createElement("div");
+    container.className = "leaflet-control osmaps-fill-opacity";
+
+    const header = document.createElement("div");
+    header.className = "osmaps-fill-opacity__header";
+    container.appendChild(header);
+
+    const label = document.createElement("span");
+    label.textContent = "Fill opacity";
+    header.appendChild(label);
+
+    const value = document.createElement("span");
+    value.className = "osmaps-fill-opacity__value";
+    value.textContent = `${Math.round(this.visualFillOpacity * 100)}%`;
+    header.appendChild(value);
+
+    const slider = document.createElement("input");
+    slider.className = "osmaps-fill-opacity__slider";
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "100";
+    slider.step = "20";
+    slider.value = String(Math.round(this.visualFillOpacity * 100));
+    slider.setAttribute("aria-label", "Map fill opacity");
+
+    slider.addEventListener("input", () => {
+      const percentage = Number(slider.value);
+      value.textContent = `${percentage}%`;
+      this.setVisualFillOpacity(percentage / 100);
+    });
+
+    container.appendChild(slider);
+    return container;
+  }
+
+  /**
+   * Applies the selected opacity multiplier to existing polygon and point fills.
+   * Feature outlines remain fully opaque.
+   */
+  private setVisualFillOpacity(opacity: number): void {
+    this.visualFillOpacity = Math.max(0, Math.min(1, opacity));
+
+    [this.leafletFeaturesLayer, this.leafletPointsLayer].forEach(collection => {
+      collection?.eachLayer((layer: any) => {
+        const feature = layer.feature as OSMapsGeoJson | undefined;
+        if (!feature || typeof feature.opacity !== "number" || typeof layer.setStyle !== "function") {
+          return;
+        }
+
+        layer.setStyle({
+          fillOpacity: feature.opacity * this.visualFillOpacity,
+          opacity: 1
+        });
+      });
+    });
   }
 
   /**
@@ -740,7 +802,7 @@ export class OSPowerBIMapManager {
             color: isSelected
               ? feature.selectionBorderColour
               : feature.borderColour,
-            fillOpacity: feature.opacity,
+            fillOpacity: feature.opacity * this.visualFillOpacity,
           });
         }
       });
@@ -854,7 +916,7 @@ export class OSPowerBIMapManager {
         // when overlaying polygon of same colour
         color: feature.borderColour,
         weight: feature.weight, // means border thickness or line itself,
-        fillOpacity: feature.opacity, // fill opacity varies with data / control / highlight
+        fillOpacity: feature.opacity * this.visualFillOpacity, // fill opacity varies with data / control / highlight
         opacity: 1, // borders always opaque
         dashArray: feature.lineStyle
       });
@@ -876,7 +938,7 @@ export class OSPowerBIMapManager {
               : colours.GREYSTONE_NEUTRAL
             : colours.YELLOW_HOVER;
           layer.setStyle({
-            fillOpacity: feature.highlightOpacity,
+            fillOpacity: feature.highlightOpacity * this.visualFillOpacity,
             color: hoverColour,
           });
           // For points, also set the interior to the hover colour
@@ -892,14 +954,14 @@ export class OSPowerBIMapManager {
             layer.setStyle({
               fillColor: feature.fillColour,
               color: feature.borderColour,
-              fillOpacity: feature.opacity,
+              fillOpacity: feature.opacity * this.visualFillOpacity,
             });
           } else {
             // feature is selected so on mouseout return to selected highlight colours
             layer.setStyle({
               fillColor: feature.selectionColour,
               color: feature.selectionBorderColour,
-              fillOpacity: feature.opacity,
+              fillOpacity: feature.opacity * this.visualFillOpacity,
             });
           }
         }.bind(this),
@@ -959,10 +1021,10 @@ export class OSPowerBIMapManager {
         radius: feature.size,
         color: feature.borderColour,
         fillColor: feature.fillColour as string,
-        opacity: feature.opacity,
+        opacity: 1,
         // note that weight (outline thickness) and formula for fill are currently hardcoded
         weight: feature.weight,
-        fillOpacity: feature.opacity / 3.0,
+        fillOpacity: (feature.opacity / 3.0) * this.visualFillOpacity,
         dashArray: feature.lineStyle,
         pane: "markerPane", // this will ensure they render over the features which are in canvas on overlaypane
       });

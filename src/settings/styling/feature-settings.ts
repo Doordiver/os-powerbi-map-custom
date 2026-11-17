@@ -3,24 +3,6 @@ import { ColourValueTypes, LineStyles } from "../../types/carto-types";
 import { UnscaledSymbolProvider, PBIDataDisplayProperties, SymbolConfiguration } from "../../types/powerbi-datamodel-types";
 
 class FeatureStylingSimpleCard extends formattingSettings.SimpleCard {
-    OpacityUI = new formattingSettings.Slider({
-    name: "featureOpacity",
-    displayName: "Feature opacity",
-    value: 40,
-    description: "Opacity of features. Affects all features added via the GeoJSON/WKT field, polygons coded from GSS codes, and features from your uploaded data that are matched to the Power BI data model.",
-    options: {
-      minValue: {
-        type: powerbi.visuals.ValidatorType.Min,
-        value: 10,
-      },
-      maxValue: {
-        type: powerbi.visuals.ValidatorType.Max,
-        value: 100,
-      },
-      unitSymbol: "%",
-      unitSymbolAfterInput: true,
-    },
-  });
   ColourMaxUI = new formattingSettings.ColorPicker({
     name: "featureColourMax",
     value: { value: "#453C90" },
@@ -71,6 +53,12 @@ class FeatureStylingSimpleCard extends formattingSettings.SimpleCard {
     "If unselected then the configured colour ramp will be used as for numeric data, ranking the "+
     "categorical values in alphabetical order. If there are more "+
     "than 4-5 categories in the data, the colours may be harder to distinguish."
+  });
+  AllowCategoryColourEditingUI = new formattingSettings.ToggleSwitch({
+    name: "allowFeatureCategoryColourEditing",
+    value: false,
+    displayName: "Lock category colours",
+    description: "When enabled, report users cannot change category colours from the map legend."
   });
 SizeMaxUI = new formattingSettings.Slider({
     name: "featurePointSizeMax",
@@ -152,8 +140,8 @@ SizeMaxUI = new formattingSettings.Slider({
     this.ColourMaxUI,
     this.ColourMinUI,
     this.ColourClipUI,
-    this.OpacityUI,
     this.DefaultCatColoursUI,
+    this.AllowCategoryColourEditingUI,
     this.LineThicknessUI,
     this.SizeMaxUI,
     this.SizeMinUI,
@@ -181,8 +169,9 @@ SizeMaxUI = new formattingSettings.Slider({
   set PointSizeMin(val:number) {this.SizeMinUI.value = val;}
   /** Gets the size percent clip as a proportion (0-1). */
   get PointSizeClip() { return this.SizeClipUI.value / 100.0}
-  get defaultOpacity() { return this.OpacityUI.value / 100.0 }
+  get defaultOpacity() { return 1.0 }
   get DefaultCategoricalColours() { return this.DefaultCatColoursUI.value};
+  get AllowCategoryColourEditing() { return !this.AllowCategoryColourEditingUI.value; }
   /** Gets the line/boundary thickness. */
   get LineThickness() { return this.LineThicknessUI.value};
   /** Tells the card which type of colouring is currently applied to the features layer, so it can update
@@ -231,6 +220,7 @@ SizeMaxUI = new formattingSettings.Slider({
            this.PointSizeClip === other.PointSizeClip &&
            this.defaultOpacity === other.defaultOpacity &&
            this.DefaultCategoricalColours === other.DefaultCategoricalColours &&
+           this.AllowCategoryColourEditing === other.AllowCategoryColourEditing &&
            this.LineThickness === other.LineThickness;
   }
 }

@@ -345,12 +345,12 @@
                     "displayName": "Clip top/bottom % of values before scaling",
                     "type": {"numeric": true}
                 },
-                "featureOpacity": {
-                    "displayName": "Feature opacity",
-                    "type": {"numeric": true}
-                },
                 "defaultFeatureCategoricalColours":{
                     "displayName": "Default colours for categorical data",
+                    "type": {"bool": true}
+                },
+                "allowFeatureCategoryColourEditing": {
+                    "displayName": "Lock category colours",
                     "type": {"bool": true}
                 },
                 "featurePointSizePctClip": {
@@ -489,6 +489,14 @@
                     "type": {"text": true}
                 },
                 "lastKeyStatus":{
+                    "type": {"text": true}
+                },
+                "featureCategoryColours":{
+                    "displayName": "Saved feature category colours",
+                    "type": {"text": true}
+                },
+                "featureCategorySelections":{
+                    "displayName": "Saved feature category selections",
                     "type": {"text": true}
                 }
             }

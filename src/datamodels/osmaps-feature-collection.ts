@@ -41,6 +41,18 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
   
   private currentCartoSettings:ScalableLayerCartoSettings;
 
+  /** Saved manual colours, indexed by colour field and category value. */
+  private categoryColourOverrides: { [fieldName: string]: { [category: string]: string } };
+
+  /** Persists a changed manual category colour. */
+  private onCategoryColourChange?: (fieldName: string, category: string, colour: string) => void;
+
+  /** Saved category selections, indexed by colour field. */
+  private categorySelections: { [fieldName: string]: string[] };
+
+  /** Persists a changed category selection. */
+  private onCategorySelectionChange?: (fieldName: string, categories: string[]) => void;
+
   /**  required property of GeoJSON FeatureCollection */
   public type: "FeatureCollection"
   
@@ -60,7 +72,18 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
   public get length_unique_geoms() { return this.geometryHashes.size; }
   public get isCategorical() { return this.colour_scaler instanceof ColourCategoricalScaler }
   
-  constructor(cartoSettings: ScalableLayerCartoSettings, defaultSymbolConfig?: SymbolConfiguration) {
+  constructor(
+    cartoSettings: ScalableLayerCartoSettings,
+    defaultSymbolConfig?: SymbolConfiguration,
+    categoryColourOverrides: { [fieldName: string]: { [category: string]: string } } = {},
+    onCategoryColourChange?: (fieldName: string, category: string, colour: string) => void,
+    categorySelections: { [fieldName: string]: string[] } = {},
+    onCategorySelectionChange?: (fieldName: string, categories: string[]) => void
+  ) {
+    this.categoryColourOverrides = categoryColourOverrides || {};
+    this.onCategoryColourChange = onCategoryColourChange;
+    this.categorySelections = categorySelections || {};
+    this.onCategorySelectionChange = onCategorySelectionChange;
     this.updateCartoSettings(cartoSettings);
     if (defaultSymbolConfig){
       this.unmatched_symbol_simulator = new ConfiguredSymbolSimulator(defaultSymbolConfig);
@@ -82,7 +105,29 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
         legendName: colourFieldName,
         showBorder: withBorder,
         patchOpacity: this.opacity_scaler.getDefaultValue(),
-        numberFormatString: colourFieldFormatter
+        numberFormatString: colourFieldFormatter,
+        allowCategoryColourEditing: !withBorder && this.currentCartoSettings.AllowCategoryColourEditing,
+        categoryColourOverrides: this.categoryColourOverrides[colourFieldName] || {},
+        selectedCategories: this.colour_scaler instanceof ColourCategoricalScaler
+          ? this.colour_scaler.getSelectedCategories()
+          : this.categorySelections[colourFieldName] || [],
+        onCategorySelectionChange: categories => {
+          this.categorySelections[colourFieldName] = categories;
+          this.onCategorySelectionChange?.(colourFieldName, categories);
+          if (this.colour_scaler instanceof ColourCategoricalScaler) {
+            this.colour_scaler.clearLegendCache();
+          }
+        },
+        onCategoryColourChange: (category, colour) => {
+          if (!this.categoryColourOverrides[colourFieldName]) {
+            this.categoryColourOverrides[colourFieldName] = {};
+          }
+          this.categoryColourOverrides[colourFieldName][category] = colour;
+          this.onCategoryColourChange?.(colourFieldName, category, colour);
+          if (this.colour_scaler instanceof ColourCategoricalScaler) {
+            this.colour_scaler.clearLegendCache();
+          }
+        }
       };
       return this.colour_scaler.getLegendEntriesDiv(legendOpts)};
     return null;
@@ -196,7 +241,7 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
     this.defaultSymbol = defaultSymbolConfig
   }
 
-  private initialiseColourScaler(colourScaleType: ColourValueTypes){
+  private initialiseColourScaler(colourScaleType: ColourValueTypes, colourFieldName?: string){
     if (colourScaleType === ColourValueTypes.CATEGORICAL){
       if(!(this.colour_scaler instanceof ColourCategoricalScaler)){
         const newScaler = new ColourCategoricalScaler(
@@ -208,6 +253,9 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
             : PresetColourPalettes.PAIRED
           : PresetColourPalettes.NOTUSED
         newScaler.setUsePresetColours(colType);
+        if (colourFieldName && this.categorySelections[colourFieldName]?.length) {
+          newScaler.setSelectedCategories(this.categorySelections[colourFieldName]);
+        }
         this.colour_scaler = newScaler;
       }
       // todo handle if colour scaler exists but is numeric, and now we have received 
@@ -249,7 +297,7 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
       // if colourscaler doesn't exist then create it as either a categorical or numeric scaler 
       // depending on what this value is. If it does already exist, then change it to being a categorical
       // scaler if it's currently a numerical one and the new value is categorical.
-      this.initialiseColourScaler(newFeature.colourValueType);
+      this.initialiseColourScaler(newFeature.colourValueType, newFeature.colourSource);
     
       if (newFeature.colourValueType !== ColourValueTypes.PRESET){
         // if the colour value is anything other than a preset hexcode then add it to the scaler 
@@ -363,7 +411,11 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
       let newColour:string;
       if (outFeat.colourValueType !== ColourValueTypes.PRESET){
         if(this.colour_scaler instanceof ColourCategoricalScaler){
-          newColour = this.colour_scaler.getColourForCategory(outFeat.fillColour as string);
+          const category = String(outFeat.fillColour);
+          const manualColour = this.categoryColourOverrides?.[outFeat.colourSource]?.[category];
+          newColour = manualColour && /^#[0-9a-f]{6}$/i.test(manualColour)
+            ? manualColour
+            : this.colour_scaler.getColourForCategory(category);
         }
         else {
           newColour = this.colour_scaler.getColourForValue(outFeat.fillColour);

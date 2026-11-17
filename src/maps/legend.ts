@@ -7,6 +7,7 @@ import { LegendSymbolOverrides } from "../types/powerbi-datamodel-types";
  */
 export class LegendManager{
     legendDiv:HTMLElement;
+    legendControlsDiv: HTMLElement;
     legendCollapseButton: HTMLElement;
     legendCollapseContainer: HTMLElement;
     pointsDiv:HTMLElement;
@@ -62,7 +63,8 @@ export class LegendManager{
          * Therefore only divs of legenditem and below are ever removed or recreated, upper levels are just shown or 
          * hidden.
         */     
-       this.legendDiv = L.DomUtil.create("div", "legend", div);
+       this.legendControlsDiv = L.DomUtil.create("div", "legend-controls", div);
+       this.legendDiv = L.DomUtil.create("div", "legend", this.legendControlsDiv);
        this.legendCollapseContainer = L.DomUtil.create("div", "legend__legend-collapse-container");
         this.legendCollapseButton = L.DomUtil.create("button", "legend__legend-collapse");
         this.legendCollapseButton.innerHTML = `<span class="material-symbols-rounded">chevron_right</span><p>Legend</p>`
@@ -89,6 +91,13 @@ export class LegendManager{
         this.legendCollapseButton.addEventListener("click", () => {
             this.toggleLegend();
           });
+    }
+
+    /**
+     * Adds the map fill-opacity slider below the layer legend entries.
+     */
+    public setFillOpacityControl(control: HTMLElement): void {
+        this.legendDiv.parentElement.appendChild(control);
     }
 
     /**

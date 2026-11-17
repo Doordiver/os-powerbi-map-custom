@@ -238,7 +238,47 @@ export class OSMapsGeoJSONBuilder {
     const cartoSettings = settings.getCartoSettings(Layers.Features);
     const unscaledSymbol = settings.unmatchedDataStylingCard.DefaultStylingProperties;
     unscaledSymbol.symbolName = settings.uploadedDataConfigCard.FileName;
-    const newPolygonSet = new OSMapsCartographicFeatureCollection(cartoSettings, unscaledSymbol);
+    let categoryColourOverrides: { [fieldName: string]: { [category: string]: string } } = {};
+    try {
+      const savedCategoryColours = this.UIManager.visual.getPersistedSettings("featureCategoryColours");
+      if (typeof savedCategoryColours === "string" && savedCategoryColours.trim()) {
+        categoryColourOverrides = JSON.parse(savedCategoryColours);
+      } else if (savedCategoryColours && typeof savedCategoryColours === "object") {
+        categoryColourOverrides = savedCategoryColours;
+      }
+    } catch {
+      categoryColourOverrides = {};
+    }
+
+    let categorySelections: { [fieldName: string]: string[] } = {};
+    try {
+      const savedSelections = this.UIManager.visual.getPersistedSettings("featureCategorySelections");
+      if (typeof savedSelections === "string" && savedSelections.trim()) {
+        categorySelections = JSON.parse(savedSelections);
+      } else if (savedSelections && typeof savedSelections === "object") {
+        categorySelections = savedSelections;
+      }
+    } catch {
+      categorySelections = {};
+    }
+
+    const newPolygonSet = new OSMapsCartographicFeatureCollection(
+      cartoSettings,
+      unscaledSymbol,
+      categoryColourOverrides,
+      (fieldName, category, colour) => {
+        if (!categoryColourOverrides[fieldName]) {
+          categoryColourOverrides[fieldName] = {};
+        }
+        categoryColourOverrides[fieldName][category] = colour;
+        this.UIManager.visual.persistDataToCard("featureCategoryColours", categoryColourOverrides);
+      },
+      categorySelections,
+      (fieldName, categories) => {
+        categorySelections[fieldName] = categories;
+        this.UIManager.visual.persistDataToCard("featureCategorySelections", categorySelections);
+      }
+    );
     // Assume that there can only be data in one of feature_geometry, gss, or geojson_ref. 
     // This needs to be enforced with conditions in the capabilities.json
     const featureSourceType:FeatureInputTypes = viewmodel.featureGeometryRows.length

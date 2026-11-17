@@ -181,6 +181,8 @@ export class ScalableLayerCartoSettings {
   public PointSizeClip: number;
   /** Whether to use default categorical colours. */
   public DefaultCategoricalColours: boolean;
+  /** Whether manual feature category colour editing is enabled. */
+  public AllowCategoryColourEditing: boolean;
   /** Default opacity for the layer. */
   public defaultOpacity: number;
   /** Opacity for highlighted features. */
@@ -220,6 +222,9 @@ export class ScalableLayerCartoSettings {
     this.PointSizeMin = layerSettingsCard.PointSizeMin;
     this.lineThickness = layerSettingsCard.LineThickness;
     this.DefaultCategoricalColours = layerSettingsCard.DefaultCategoricalColours;
+    this.AllowCategoryColourEditing = "AllowCategoryColourEditing" in layerSettingsCard
+      ? layerSettingsCard.AllowCategoryColourEditing
+      : false;
     
     // settings shared between layers
     this.ColourSelected = formattingSettings.mapSettingsCard.ColourSelected;

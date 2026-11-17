@@ -55,6 +55,11 @@ export interface LegendSymbolOverrides{
   showBorder?: boolean;
   patchOpacity?: number;
   numberFormatString?: string;
+  allowCategoryColourEditing?: boolean;
+  categoryColourOverrides?: Record<string, string>;
+  onCategoryColourChange?: (category: string, colour: string) => void;
+  selectedCategories?: string[];
+  onCategorySelectionChange?: (categories: string[]) => void;
 }
 
 /** Describes objects that can provide unscaled symbol configurations */
