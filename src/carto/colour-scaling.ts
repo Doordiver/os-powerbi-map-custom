@@ -341,9 +341,9 @@ export class ColourCategoricalScaler extends ColourChromaScaler {
   /** The preset color palette type in use. */
   private presetColourType: PresetColourPalettes = PresetColourPalettes.PAIRED;
   /** Color to use for "other" values beyond the max class count. */
-  static OtherValuesColour = colours.GREYSTONE_NEUTRAL;
+  static OtherValuesColour = "#E6E6E6";
   /** Maximum number of color classes. */
-  private MAX_CLASSES = 12;
+  private MAX_CLASSES = 24;
 
   /**
    * Constructs a ColourCategoricalScaler with the given min and max colors.
@@ -371,8 +371,15 @@ export class ColourCategoricalScaler extends ColourChromaScaler {
         this.chromaScaler = chroma.cubehelix().lightness([0.3,0.7]).scale().classes(this.numeric_scaler.n_classes);
         break;
       case PresetColourPalettes.PAIRED:
-        // or, use one of the two 12-class colorbrewer sets, Paired or Set3
-        this.chromaScaler = chroma.scale("Paired").classes(this.numeric_scaler.n_classes);
+        // A varied 24-colour categorical palette.
+        this.chromaScaler = chroma.scale([
+          "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728",
+          "#9467BD", "#8C564B", "#E377C2", "#17BECF",
+          "#BCBD22", "#393B79", "#637939", "#8C6D31",
+          "#843C39", "#7B4173", "#3182BD", "#E6550D",
+          "#31A354", "#756BB1", "#636363", "#E7BA52",
+          "#AD494A", "#A55194", "#6B6ECF", "#B5CF6B"
+        ]).classes(this.numeric_scaler.n_classes);
         break;
       case PresetColourPalettes.SET3:
         this.chromaScaler = chroma.scale("Set3").classes(this.numeric_scaler.n_classes);
@@ -401,7 +408,29 @@ export class ColourCategoricalScaler extends ColourChromaScaler {
    * @param val The category value.
    * @returns The color as a hex string, or null for null/blank values.
    */
-  public getColourForCategory(val: string): string {
+  /** Clears the cached legend so updated category colours can be displayed. */
+  public setSelectedCategories(categories: string[] | null): void {
+    this.numeric_scaler.setSelectedCategories(categories);
+    this.classesInitialised = false;
+    this.legendDiv = null;
+  }
+
+  public getAllCategories(): string[] {
+    return [...this.numeric_scaler.all_categories].reverse();
+  }
+
+  public getSelectedCategories(): string[] {
+    return [...this.numeric_scaler.visible_categories].reverse();
+  }
+
+  public clearLegendCache(): void {
+    this.legendDiv = null;
+  }
+
+  public getColourForCategory(
+    val: string,
+    overrides: Record<string, string> = {}
+  ): string {
     /** Get the RGB values for a category value, returning null if the value is null and 
      * should have no fill (this depends on whether all the data are null, in which case they 
      * will be shown using a default colour, or only some in which case they will be shown with 
@@ -418,6 +447,11 @@ export class ColourCategoricalScaler extends ColourChromaScaler {
         return this.getDefaultColour()
       }
     }
+    const manualColour = overrides?.[String(val)];
+    if (manualColour && /^#[0-9a-f]{6}$/i.test(manualColour)) {
+      return manualColour;
+    }
+
     const prop = this.numeric_scaler.getValueForString(val);
     if(prop>=0){ 
       return this.getColourForProportion(prop); 
@@ -472,24 +506,69 @@ export class ColourCategoricalScaler extends ColourChromaScaler {
     layerTitleDiv.textContent = options.legendName;
     layerTitleDiv.title = options.legendName;
     layerLegendDiv.appendChild(layerTitleDiv);
+
+    if (options.allowCategoryColourEditing && options.onCategoryColourChange) {
+      const hintDiv = document.createElement("div");
+      hintDiv.className = "legend__legend-item__edit-hint";
+      hintDiv.textContent = "Click a colour swatch to change it";
+      layerLegendDiv.appendChild(hintDiv);
+    }
     
     const stepsDiv = document.createElement('div');
     stepsDiv.className = "legend__category-legend";
     layerLegendDiv.appendChild(stepsDiv);
 
-    this.numeric_scaler.all_categories.reverse().forEach(cat => {
-      const colour = this.getColourForCategory(cat);
-      const fadedColour = this.addAlpha(this.getColourForCategory(cat), options.patchOpacity);
+    this.getSelectedCategories().forEach(cat => {
+      const category = String(cat);
+      const colour = this.getColourForCategory(category, options.categoryColourOverrides);
+      const fadedColour = this.addAlpha(colour, options.patchOpacity);
       const patchDiv = document.createElement('div');
       patchDiv.style.backgroundColor = fadedColour;
       if(options.showBorder) { patchDiv.style.border = `2px solid ${colour}` }
-      patchDiv.className = "legend__category-legend__patches"
-      stepsDiv.appendChild(patchDiv)
+      patchDiv.className = "legend__category-legend__patches";
+
       const labelDiv = document.createElement('div');
-      labelDiv.textContent = options.numberFormatString ? format(cat, options.numberFormatString) : cat;
-      labelDiv.title = cat;
-      labelDiv.className = "legend__category-legend__text"
-      stepsDiv.appendChild(labelDiv)
+      labelDiv.textContent = options.numberFormatString ? format(cat, options.numberFormatString) : category;
+      labelDiv.title = category;
+      labelDiv.className = "legend__category-legend__text";
+
+      if (options.allowCategoryColourEditing && options.onCategoryColourChange) {
+        patchDiv.style.position = "relative";
+        patchDiv.style.cursor = "pointer";
+
+        const colourInput = document.createElement("input");
+        colourInput.type = "color";
+        colourInput.value = colour;
+        colourInput.title = `Change colour for ${category}`;
+        colourInput.style.position = "absolute";
+        colourInput.style.inset = "0";
+        colourInput.style.width = "100%";
+        colourInput.style.height = "100%";
+        colourInput.style.opacity = "0";
+        colourInput.style.cursor = "pointer";
+
+        ["pointerdown", "mousedown", "click", "dblclick"].forEach(eventName => {
+          colourInput.addEventListener(eventName, event => event.stopPropagation());
+        });
+
+        colourInput.addEventListener("input", () => {
+          patchDiv.style.backgroundColor = this.addAlpha(colourInput.value, options.patchOpacity);
+          if (options.showBorder) {
+            patchDiv.style.border = `2px solid ${colourInput.value}`;
+          }
+        });
+
+        colourInput.addEventListener("change", () => {
+          options.onCategoryColourChange(category, colourInput.value);
+        });
+
+        patchDiv.appendChild(colourInput);
+        stepsDiv.appendChild(patchDiv);
+        stepsDiv.appendChild(labelDiv);
+      } else {
+        stepsDiv.appendChild(patchDiv);
+        stepsDiv.appendChild(labelDiv);
+      }
     });
     if(this.hasNullValues){
       const patchDiv = document.createElement('div');
@@ -513,9 +592,121 @@ export class ColourCategoricalScaler extends ColourChromaScaler {
       patchDiv.className = "legend__category-legend__patches"
       stepsDiv.appendChild(patchDiv);
       const labelDiv = document.createElement('div');
-      labelDiv.textContent = "<All Other Values>";
+      labelDiv.textContent = "All Other Values";
       labelDiv.title = textContent;
       stepsDiv.appendChild(labelDiv);
+
+      if (this.numeric_scaler.all_categories.length > this.MAX_CLASSES &&
+          options.onCategorySelectionChange) {
+        const selectionLink = document.createElement("button");
+        selectionLink.type = "button";
+        selectionLink.className = "legend__category-selection-link";
+        selectionLink.textContent = "Change shown categories";
+        selectionLink.addEventListener("click", (event) => {
+          event.stopPropagation();
+
+          const allCategories = this.getAllCategories();
+          const initialSelection = options.selectedCategories?.length
+            ? options.selectedCategories
+            : this.getSelectedCategories();
+          const draftSelection = new Set(initialSelection);
+          const backdrop = document.createElement("div");
+          backdrop.className = "osmaps-category-picker-backdrop";
+
+          const panel = document.createElement("div");
+          panel.className = "osmaps-category-picker";
+          panel.addEventListener("click", e => e.stopPropagation());
+
+          const heading = document.createElement("div");
+          heading.className = "osmaps-category-picker__heading";
+          heading.textContent = "Choose the 24 categories to show";
+          panel.appendChild(heading);
+
+          const search = document.createElement("input");
+          search.type = "search";
+          search.placeholder = "Search categories";
+          search.className = "osmaps-category-picker__search";
+          panel.appendChild(search);
+
+          const sort = document.createElement("select");
+          sort.className = "osmaps-category-picker__sort";
+          sort.innerHTML = '<option value="asc">Sort A–Z</option><option value="desc">Sort Z–A</option>';
+          panel.appendChild(sort);
+
+          const count = document.createElement("div");
+          count.className = "osmaps-category-picker__count";
+          panel.appendChild(count);
+
+          const list = document.createElement("div");
+          list.className = "osmaps-category-picker__list";
+          panel.appendChild(list);
+
+          const footer = document.createElement("div");
+          footer.className = "osmaps-category-picker__footer";
+          const cancel = document.createElement("button");
+          cancel.type = "button";
+          cancel.textContent = "Cancel";
+          const apply = document.createElement("button");
+          apply.type = "button";
+          apply.textContent = "Apply";
+          footer.append(cancel, apply);
+          panel.appendChild(footer);
+          backdrop.appendChild(panel);
+          document.body.appendChild(backdrop);
+
+          const close = () => backdrop.remove();
+
+          const renderList = () => {
+            count.textContent = `${draftSelection.size} of ${this.MAX_CLASSES} selected`;
+            apply.disabled = draftSelection.size !== this.MAX_CLASSES;
+            list.replaceChildren();
+
+            const query = search.value.trim().toLocaleLowerCase();
+            const categories = allCategories
+              .filter(category => category.toLocaleLowerCase().includes(query))
+              .sort((a, b) => sort.value === "asc"
+                ? a.localeCompare(b)
+                : b.localeCompare(a));
+
+            categories.forEach(category => {
+              const row = document.createElement("label");
+              row.className = "osmaps-category-picker__option";
+              const checkbox = document.createElement("input");
+              checkbox.type = "checkbox";
+              checkbox.checked = draftSelection.has(category);
+              checkbox.disabled = !checkbox.checked &&
+                draftSelection.size >= this.MAX_CLASSES;
+              checkbox.addEventListener("change", () => {
+                if (checkbox.checked) {
+                  if (draftSelection.size < this.MAX_CLASSES) {
+                    draftSelection.add(category);
+                  }
+                } else {
+                  draftSelection.delete(category);
+                }
+                renderList();
+              });
+              const text = document.createElement("span");
+              text.textContent = category;
+              row.append(checkbox, text);
+              list.appendChild(row);
+            });
+          };
+
+          search.addEventListener("input", renderList);
+          sort.addEventListener("change", renderList);
+          cancel.addEventListener("click", close);
+          apply.addEventListener("click", () => {
+            if (draftSelection.size === this.MAX_CLASSES) {
+              options.onCategorySelectionChange([...draftSelection]);
+              close();
+            }
+          });
+          backdrop.addEventListener("click", close);
+          renderList();
+        });
+        layerLegendDiv.appendChild(selectionLink);
+      }
     }
     
 

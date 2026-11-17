@@ -117,6 +117,7 @@ export class OSPowerBIUIManager {
     });
 
     this.legendManager = new LegendManager(this.target)
+    this.legendManager.setFillOpacityControl(this.mapManager.buildFillOpacityControl());
 
     // map attribution
     this.mapAttributionButton = document.createElement("span");

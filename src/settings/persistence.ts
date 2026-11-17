@@ -62,6 +62,18 @@ export class PersistedSettingsHolderCard extends formattingSettings.SimpleCard {
     value: "not_determined",
     placeholder: ""
   });
+  featureCategoryColours = new formattingSettings.TextArea({
+    name: "featureCategoryColours",
+    displayName: "featureCategoryColours",
+    value: "",
+    placeholder: ""
+  });
+  featureCategorySelections = new formattingSettings.TextArea({
+    name: "featureCategorySelections",
+    displayName: "featureCategorySelections",
+    value: "",
+    placeholder: ""
+  });
   name: string = "osmapsPersistedSettings";
   /** Card display name. */
   displayName: string = "osmapsPersistedSettings";
@@ -69,6 +81,7 @@ export class PersistedSettingsHolderCard extends formattingSettings.SimpleCard {
   slices: Array<FormattingSettingsSlice> = [
     this.geocodeResults, this.polygonGeocodeResults, this.polygonGeocodeBounds,
     this.layername, this.mapExtent, this.usingDetailedGeom, this.uploadedGeojson, 
-    this.uploadedGeojson_idfield, this.lastKeyStatus];
+    this.uploadedGeojson_idfield, this.lastKeyStatus, this.featureCategoryColours,
+    this.featureCategorySelections];
   visible: boolean = false;
 }

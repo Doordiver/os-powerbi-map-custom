@@ -232,45 +232,60 @@ export class CategoricalScaler extends NumericPercentClipScaler {
      * @returns True if the category was added, false if overfilled.
      * @throws Error if values are locked.
      */
+    private selectedCategories: string[] | null = null;
+
     pushCategory(val: string|number): boolean {
       if (this.valuesLocked) {
-        throw new Error(
-          "Values can only be added before any have been retrieved"
-        );
+        throw new Error("Values can only be added before any have been retrieved");
       }
-      if (this.n_classes < this.maxClasses){
-        this.inputCategories.add(val.toString());
-        return true
-      }
-      else {
-        this.isOverFilled = true;
-        return false
-      } 
+      const category = val.toString();
+      const sizeBefore = this.inputCategories.size;
+      this.inputCategories.add(category);
+      return this.inputCategories.size > sizeBefore;
     }
 
-    /** The number of classes (categories). */
-    get n_classes() { return this.inputCategories.size; }
-    /** True if the scaler has more categories than allowed. */
-    get has_AllOtherValues() { return this.isOverFilled; }
-    /** Returns all categories, sorted. */
-    get all_categories() { return Array.from(this.inputCategories).sort((a, b)=> b.localeCompare(a)) }
+    /** Number of categories receiving individual colours. */
+    get n_classes() { return this.visible_categories.length; }
 
-    /**
-     * Initialises the output mapping for categories.
-     * @protected
-     */
+    /** True when some categories are grouped under All Other Values. */
+    get has_AllOtherValues() {
+      return this.inputCategories.size > this.visible_categories.length;
+    }
+
+    /** All available categories, sorted descending. */
+    get all_categories() {
+      return Array.from(this.inputCategories).sort((a, b) => b.localeCompare(a));
+    }
+
+    /** Categories receiving individual colours, sorted descending. */
+    get visible_categories() {
+      const all = this.all_categories;
+      const selected = this.selectedCategories === null
+        ? [...all].reverse().slice(0, this.maxClasses)
+        : this.selectedCategories.filter(category => this.inputCategories.has(category)).slice(0, this.maxClasses);
+      return selected.sort((a, b) => b.localeCompare(a));
+    }
+
+    /** Sets the categories that receive individual colours. */
+    setSelectedCategories(categories: string[] | null): void {
+      this.selectedCategories = Array.isArray(categories)
+        ? [...new Set(categories.map(String))].slice(0, this.maxClasses)
+        : null;
+      this.valuesLocked = false;
+      this.outputInitialised = false;
+    }
+
     protected override initialiseOutput() {
       this.valuesLocked = true;
-      const sortedInputs = Array.from(this.inputCategories).sort((a, b)=> b.localeCompare(a));
-      const valuePositions = sortedInputs.keys();
-      let categoryPositionMap = {};
+      const selectedInputs = this.visible_categories;
+      const categoryPositionMap: Record<string, number> = {};
       this.numericScaler = new NumericLinearScaler(0, 1);
-      for (let idx of valuePositions){
-        categoryPositionMap[sortedInputs[idx]] = idx;
+      selectedInputs.forEach((category, idx) => {
+        categoryPositionMap[category] = idx;
         this.numericScaler.pushValue(idx);
-      }
+      });
       this.categoryPositionMap = categoryPositionMap;
-      this.outputInitialised=true;
+      this.outputInitialised = true;
     }
 
     /**
