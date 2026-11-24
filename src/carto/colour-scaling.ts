@@ -532,6 +532,17 @@ export class ColourCategoricalScaler extends ColourChromaScaler {
       labelDiv.title = category;
       labelDiv.className = "legend__category-legend__text";
 
+      if (options.onCategoryClick) {
+        patchDiv.style.cursor = "pointer";
+        labelDiv.style.cursor = "pointer";
+        const selectCategory = (event: Event) => {
+          event.stopPropagation();
+          options.onCategoryClick(category);
+        };
+        patchDiv.addEventListener("click", selectCategory);
+        labelDiv.addEventListener("click", selectCategory);
+      }
+
       if (options.allowCategoryColourEditing && options.onCategoryColourChange) {
         patchDiv.style.position = "relative";
         patchDiv.style.cursor = "pointer";

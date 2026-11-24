@@ -60,6 +60,7 @@ export interface LegendSymbolOverrides{
   onCategoryColourChange?: (category: string, colour: string) => void;
   selectedCategories?: string[];
   onCategorySelectionChange?: (categories: string[]) => void;
+  onCategoryClick?: (category: string) => void;
 }
 
 /** Describes objects that can provide unscaled symbol configurations */

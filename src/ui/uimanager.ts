@@ -30,6 +30,8 @@ export class OSPowerBIUIManager {
   private closeNotificationsButton: HTMLElement;
   private mapAttributionButton: HTMLElement;
   private mapAttributionPopup: HTMLElement;
+  private selectionPopup: HTMLElement;
+  private selectionPopupOverlay: HTMLElement;
   private mapAttributionOverlay: HTMLElement;
   private closeMapAttribution: HTMLElement;
   private userDataUploaderUI: HTMLElement;
@@ -259,6 +261,58 @@ export class OSPowerBIUIManager {
         button.style.transition = '';
       }, 1000); // Match this duration with the transition duration
     }, 1000); // Initial delay before starting the fade-out
+  }
+
+  /**
+   * Builds and displays the central selection popup.
+   */
+  public ShowSelectionPopup(content: string): HTMLElement {
+    this.CloseSelectionPopup();
+
+    this.selectionPopup = document.createElement("div");
+    this.selectionPopup.className = "selection-popup";
+    this.selectionPopup.setAttribute("role", "dialog");
+
+    const closeButton = document.createElement("a");
+    closeButton.classList.add("leaflet-popup-close-button");
+    closeButton.href = "#close";
+    closeButton.setAttribute("role", "button");
+    closeButton.setAttribute("aria-label", "Close");
+    closeButton.innerHTML = "&times;";
+    closeButton.onclick = (event) => {
+      event.preventDefault();
+      this.CloseSelectionPopup();
+    };
+
+    const contentElement = document.createElement("div");
+    contentElement.className = "selection-popup__content";
+    contentElement.innerHTML = content;
+
+    this.selectionPopup.appendChild(closeButton);
+    this.selectionPopup.appendChild(contentElement);
+
+    const lassoButton = this.target.querySelector(".leaflet-control-lasso");
+    const lassoContainer = lassoButton?.closest(".leaflet-control");
+
+    if (lassoContainer) {
+      lassoContainer.classList.add("selection-popup-host");
+      lassoContainer.insertBefore(this.selectionPopup, lassoContainer.firstChild);
+    } else {
+      this.target.appendChild(this.selectionPopup);
+    }
+
+    return contentElement;
+  }
+
+  /**
+   * Closes and removes the central selection popup.
+   */
+  public CloseSelectionPopup() {
+    this.selectionPopup?.remove();
+    this.target.querySelector(".selection-popup-host")?.classList.remove("selection-popup-host");
+    this.selectionPopupOverlay?.remove();
+    this.selectionPopup = null;
+    this.selectionPopupOverlay = null;
   }
 
   /**

@@ -5,6 +5,7 @@ import format = valueFormatter.format;
 import proj4 from "proj4";
 import { ColourValueTypes } from "../types/carto-types";
 import { PBIDataDisplayProperties, SymbolConfiguration } from "../types/powerbi-datamodel-types";
+import { StringFieldValue } from "../types/data-types";
 import { colours, hexColourRegex } from "../resources";
 import {createHash} from '../utils/utils';
 import { cloneDeep } from "lodash";
@@ -122,6 +123,13 @@ export class OSMapsGeoJson implements GeoJSON.Feature {
   get fillColour(): number | string {
     return this.symbology_data.colour?.fieldvalue || null;
   }
+
+  /** Original colour field value, unaffected by colour scaling. */
+  get rawColourValue(): number | string | null {
+    return this.rawcolour !== undefined
+      ? this.rawcolour
+      : this.symbology_data.colour?.fieldvalue ?? null;
+  }
   /** Determines the border colour for the feature, considering its type and fill colour. 
    * If it's a point, we use the fill colour for the border as well (unless null, in which 
    * case we use a dark grey). If it's a line, we use the fill colour, because a line otherwise 
@@ -183,6 +191,18 @@ export class OSMapsGeoJson implements GeoJSON.Feature {
   }
   get size(): number {
     return this.symbology_data.size?.fieldvalue || null;
+  }
+
+  /** Raw fields configured for the feature popup, before display formatting. */
+  get popupEntries(): readonly StringFieldValue[] {
+    return this.symbology_data.popupEntries || [];
+  }
+
+  /** Original size value, unaffected by map scaling or styling updates. */
+  get rawSizeValue(): number | null {
+    return this.rawSize !== undefined
+      ? this.rawSize
+      : this.symbology_data.size?.fieldvalue ?? null;
   }
 
   get lineStyle(): string {
@@ -486,13 +506,9 @@ export class OSMapsGeoJson implements GeoJSON.Feature {
       </span>`);
     } else {
       if (hasNoAttributes) {
-        contentItems.push(`<p><span class="material-symbols-rounded">
-          shapes
-          </span>Polygon has no attributes</p>`);
+        contentItems.push(`<p><svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 370 370" width="10%" aria-hidden="true"><path d="M369.25 246.61h-42.93v122.64h42.93zm-68.7 0h-39.49v122.64h39.49zm-68.7 0h-36.06v122.64h36.06zm-68.7 0h-32.62v122.64h32.62zm-68.7 0H65.26v122.64h29.19zm-68.69 0H0v122.64h25.76zM171.11 67.32c-22.41 5.81-39.12 25.73-40.12 49.72h-.06v14.45h-9.92v23.27L0 194.08V0h369.25v194.08l-121.01-39.32v-23.27h-9.92v-14.45h-.06c-1-23.98-17.71-43.9-40.12-49.72l-9.3-34.7h-8.45l-9.3 34.7z"/></svg>Polygon has no attributes</p>`);
       } else {
-        contentItems.push(`<span class="material-symbols-rounded">
-      shapes
-      </span>`);
+        contentItems.push(`<svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 370 370" width="10%" aria-hidden="true"><path d="M369.25 246.61h-42.93v122.64h42.93zm-68.7 0h-39.49v122.64h39.49zm-68.7 0h-36.06v122.64h36.06zm-68.7 0h-32.62v122.64h32.62zm-68.7 0H65.26v122.64h29.19zm-68.69 0H0v122.64h25.76zM171.11 67.32c-22.41 5.81-39.12 25.73-40.12 49.72h-.06v14.45h-9.92v23.27L0 194.08V0h369.25v194.08l-121.01-39.32v-23.27h-9.92v-14.45h-.06c-1-23.98-17.71-43.9-40.12-49.72l-9.3-34.7h-8.45l-9.3 34.7z"/></svg>`);
       }
     }
 

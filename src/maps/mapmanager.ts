@@ -21,6 +21,8 @@ import { ONS_ESRI_ATTRIB, GET_OS_ATTRIB, colours, IS_LIGHTWEIGHT_BUILD } from ".
 import {LoggingTileLayer} from "./LoggingTileLayer";
 import {LoggableBounds} from "./LoggableBounds";
 import { LogRecord, LogRecordTypes } from "../logging/LoggingTypes";
+import { valueFormatter } from "powerbi-visuals-utils-formattingutils";
+import format = valueFormatter.format;
 
 const ZOOM_TO_DATA_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
   <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -69,6 +71,8 @@ export class OSPowerBIMapManager {
   private readonly NARROWED_ZOOM_LEVELS = 1.5;
   /** Set while we move the map ourselves, so the resulting leaflet events aren't read as a user gesture. */
   private suppressMoveTracking: boolean = false;
+  /** Whether the active base layer is Map Off, which has no tile zoom restriction. */
+  private isMapOff: boolean = false;
   private zoomToDataControl: L.Control;
   private visualFillOpacity: number = 1;
 
@@ -206,6 +210,8 @@ export class OSPowerBIMapManager {
         this.map?.closePopup();
       });
     this.map.on("baselayerchange", (e) => {
+      this.isMapOff = e.name === "Map Off";
+      this.updateZoomLimits();
       if(this.saveLayerTimeout) { this.cancelLayerAutosave() }
       this.saveLayerTimeout = setTimeout(function(lyrname) {
         this.hostVisual.persistDataToCard("layername", lyrname)
@@ -513,6 +519,8 @@ export class OSPowerBIMapManager {
       this._currentBaseLayers = {
         "Map Off": mapOff
       };
+      this.isMapOff = true;
+      this.updateZoomLimits();
       return;
     }
     this.UIManager.addDevMessage(`Building base layer control with api key: ${mapSettings.apiKey} (allows premium: ${this.hostVisual.keyAllowsPremiumData}, premium setting: ${mapSettings.usePremium})`);
@@ -605,6 +613,8 @@ export class OSPowerBIMapManager {
     this.layerControl.addTo(this.map);
     initialLayer.addTo(this.map);
 
+    this.isMapOff = initialLayer === layers["Map Off"];
+    this.updateZoomLimits();
     this._currentBaseLayers = layers;
   }
 
@@ -655,25 +665,11 @@ export class OSPowerBIMapManager {
         );
         return;
       }
-      this.clearMapSelection(true);
-      const selectionHandles: ISelectionId[] = [];
+      const selectedFeatures = (event.layers as L.GeoJSON[])
+        .filter((layer: any) => layer.feature instanceof OSMapsGeoJson)
+        .map((layer: any) => layer.feature as OSMapsGeoJson);
 
-      for (const layer of event.layers as L.GeoJSON[]) {
-        if (
-          layer.feature instanceof OSMapsGeoJson &&
-          layer.feature.selectionHandle
-        ) {
-          selectionHandles.push(layer.feature.selectionHandle);
-          layer.setStyle({
-            fillColor: layer.feature.selectionColour, //colours.CYANSELECT,
-            color: layer.feature.selectionBorderColour,
-          });
-          layer.feature.isSelected = true;
-        } else {
-          others.push(layer);
-        }
-      }
-      await this.hostVisual.applySelection(selectionHandles);
+      await this.selectFeaturesAndShowPopup(selectedFeatures);
     };
     return h;
   }
@@ -730,7 +726,9 @@ export class OSPowerBIMapManager {
       return;
     }
     const mapSettings = this.settings.mapSettingsCard;
-    this.map.setMaxZoom(mapSettings.getMaxZoomLevel(this.hostVisual.keyAllowsPremiumData));
+    this.map.setMaxZoom(
+      this.isMapOff ? Infinity : mapSettings.getMaxZoomLevel(this.hostVisual.keyAllowsPremiumData)
+    );
     this.map.setMinZoom(mapSettings.getMinZoomLevel() - this.OVERZOOM_LEVELS);
     this.map.setMaxBounds(mapSettings.getMaxBounds());
   }
@@ -757,6 +755,247 @@ export class OSPowerBIMapManager {
   }
 
   /**
+   * Selects features in Power BI and displays their details in the central popup.
+   */
+  public async selectFeaturesAndShowPopup(
+    features: OSMapsGeoJson[],
+    groupName = "Selected",
+    groupColour: string | null = null
+  ) {
+    const selectedFeatures: OSMapsGeoJson[] = [];
+    const selectionHandles: ISelectionId[] = [];
+
+    for (const feature of features) {
+      if (!(feature instanceof OSMapsGeoJson) || !feature.selectionHandle) {
+        continue;
+      }
+
+      const alreadySelected = selectionHandles.some(handle =>
+        (handle as unknown as powerbi.visuals.ISelectionId).equals(feature.selectionHandle as unknown as powerbi.visuals.ISelectionId)
+      );
+
+      if (!alreadySelected) {
+        selectedFeatures.push(feature);
+        selectionHandles.push(feature.selectionHandle);
+      }
+    }
+
+    if (selectionHandles.length > this.hostVisual.constants.maxSelections) {
+      this.UIManager.addError(
+        `Too many features selected! A maximum of ${this.hostVisual.constants.maxSelections} ` +
+        `can be selected at once; you selected ${selectionHandles.length}`
+      );
+      return;
+    }
+
+    await this.clearMapSelection(false);
+
+    this.map?.eachLayer((layer: any) => {
+      if (!(layer.feature instanceof OSMapsGeoJson)) return;
+
+      const feature = layer.feature as OSMapsGeoJson;
+      const isSelected = feature.selectionHandle &&
+        selectionHandles.some(handle => (feature.selectionHandle as unknown as powerbi.visuals.ISelectionId).equals(handle as unknown as powerbi.visuals.ISelectionId));
+
+      if (isSelected) {
+        layer.setStyle({
+          fillColor: feature.selectionColour,
+          color: feature.selectionBorderColour
+        });
+        feature.isSelected = true;
+      }
+    });
+
+    await this.hostVisual.applySelection(selectionHandles);
+    this.updateSelection(selectionHandles);
+
+    if (selectedFeatures.length === 0) {
+      this.UIManager.CloseSelectionPopup();
+      return;
+    }
+
+    const hideDefaultFields = this.settings.mapSettingsCard.hideDefaultPopupFields;
+
+    type AggregateField = {
+      fieldname: string;
+      values: unknown[];
+      missingCount: number;
+      formatstring?: string;
+    };
+
+    const fields = new Map<string, AggregateField>();
+
+    const addValue = (fieldname: string | undefined, value: unknown, formatstring?: string) => {
+      if (!fieldname) return;
+
+      let field = fields.get(fieldname);
+      if (!field) {
+        field = { fieldname, values: [], missingCount: 0, formatstring };
+        fields.set(fieldname, field);
+      }
+
+      if (value === null || value === undefined) {
+        field.missingCount++;
+      } else {
+        field.values.push(value);
+      }
+    };
+
+    for (const feature of selectedFeatures) {
+      if (!hideDefaultFields) {
+        addValue(feature.sizeSource || undefined, feature.rawSizeValue, feature.sizeFieldFormatter || undefined);
+        addValue(feature.colourSource || undefined, feature.rawColourValue, feature.colourFieldFormatter || undefined);
+      }
+
+      for (const entry of feature.popupEntries) {
+        addValue(entry.fieldname, entry.fieldvalue, entry.formatstring);
+      }
+    }
+
+    const escapeHtml = (value: unknown): string =>
+      String(value).replace(/[&<>"']/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[character] as string);
+
+    const rows: string[] = [];
+
+    for (const field of fields.values()) {
+      const numericValues = field.values.filter(
+        (value): value is number => typeof value === "number" && Number.isFinite(value)
+      );
+
+      if (numericValues.length === field.values.length && numericValues.length > 0) {
+        const sum = numericValues.reduce((total, value) => total + value, 0);
+        const average = sum / numericValues.length;
+        const zeroCount = numericValues.filter(value => value === 0).length;
+        const hasCounts = field.missingCount > 0 || zeroCount > 0;
+
+        const statistics: [string, number][] = [
+          ["Sum", sum],
+          ["Average", average],
+          ["Min", Math.min(...numericValues)],
+          ["Max", Math.max(...numericValues)]
+        ];
+
+        const leftContent = [
+          `<div style="font-family:inherit;text-align:center;"><strong>${escapeHtml(field.fieldname)}</strong></div>`,
+          ...(field.missingCount > 0 ? [`<div style="font-size:0.8em;color:#777;text-align:center;">${field.missingCount} missing</div>`] : []),
+          ...(zeroCount > 0 ? [`<div style="font-size:0.8em;color:#777;text-align:center;">${zeroCount} with 0</div>`] : [])
+        ].join("");
+
+        const rightContent = statistics.map(([statistic, value]) => {
+          const formattedValue = field.formatstring ? format(value, field.formatstring) : value;
+          return `<tr>
+            <td style="text-align:right;white-space:nowrap;">${statistic}:</td>
+            <td style="text-align:right;" title="${escapeHtml(formattedValue)}">${escapeHtml(formattedValue)}</td>
+          </tr>`;
+        }).join("");
+
+        rows.push(`<tr style="font-family:'Hanken Grotesk Variable',sans-serif;">
+          <td style="text-align:center;vertical-align:middle;">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+              ${leftContent}
+            </div>
+          </td>
+          <td colspan="2" style="vertical-align:middle;padding:0;">
+            <table style="width:100%;border-collapse:collapse;font:inherit;">
+              <tbody>${rightContent}</tbody>
+            </table>
+          </td>
+        </tr>`);
+      } else {
+        const fieldRows: string[] = [];
+
+        if (field.values.length > 0) {
+          const counts = new Map<string, number>();
+          field.values.forEach(value => {
+            const key = String(value);
+            counts.set(key, (counts.get(key) || 0) + 1);
+          });
+
+          const highestCount = Math.max(...Array.from(counts.values()));
+
+          // Only show categorical summaries when at least one value is repeated.
+          if (highestCount > 1) {
+            const mostCommon = Array.from(counts.entries())
+              .filter(([, count]) => count === highestCount)
+              .map(([value]) => value)
+              .sort((a, b) => a.localeCompare(b));
+
+            fieldRows.push(`<tr>
+              <td>Most common</td>
+              <td title="${escapeHtml(mostCommon.join(" / "))}">${escapeHtml(mostCommon.join(" / "))}</td>
+            </tr>
+            <tr>
+              <td>Count</td>
+              <td>${highestCount}</td>
+            </tr>`);
+          }
+        }
+
+        if (field.missingCount > 0) {
+          fieldRows.push(`<tr>
+            <td>Missing</td>
+            <td>${field.missingCount} properties missing</td>
+          </tr>`);
+        }
+
+        if (fieldRows.length > 0) {
+          rows.push(fieldRows.map((row, index) => {
+            if (index === 0) {
+              return row.replace(
+                "<tr>",
+                `<tr><td rowspan="${fieldRows.length}" title="${escapeHtml(field.fieldname)}">${escapeHtml(field.fieldname)}</td>`
+              );
+            }
+            return row.replace("<tr>", "<tr><td></td>");
+          }).join(""));
+        }
+      }
+    }
+
+    const renderContent = (container: HTMLElement) => {
+      const colourIndicator = groupColour
+        ? `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${escapeHtml(groupColour)};margin-right:6px;"></span>`
+        : "";
+
+      container.innerHTML = `
+        <div class="leaflet-popup-content__attributes">
+          <div>${colourIndicator}<strong>${escapeHtml(groupName)}</strong> (${selectedFeatures.length})</div>
+          ${rows.length > 0
+            ? `<table class="leaflet-popup__attributes-table"><tbody>${rows.join("")}</tbody></table>`
+            : ""}
+        </div>
+        <div class="leaflet-popup-content__buttons">
+          <button class="leaflet-popup-content__paging-button" id="selectionDrillThrough">
+            More...
+          </button>
+        </div>
+      `;
+
+      container.querySelector("#selectionDrillThrough")?.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const feature = selectedFeatures[0];
+        if (feature?.selectionHandle) {
+          this.hostVisual.showFeatureContextMenu(feature.selectionHandle, {
+            x: (event as MouseEvent).clientX,
+            y: (event as MouseEvent).clientY
+          });
+        }
+      });
+    };
+
+    this.map?.closePopup();
+    const content = this.UIManager.ShowSelectionPopup("");
+    renderContent(content);
+  }
+
+  /**
    * Clears all map selection, optionally propagating to Power BI.
    * @param propagateToPowerBI Whether to clear selection in Power BI as well.
    */
@@ -774,6 +1013,7 @@ export class OSPowerBIMapManager {
         }
       });
     if (propagateToPowerBI) {
+      this.UIManager.CloseSelectionPopup();
       await this.hostVisual.applySelection([]);
     }
   }
@@ -782,32 +1022,31 @@ export class OSPowerBIMapManager {
      * Synchronises map feature highlighting with Power BI's selection state.
      */
     public updateSelection(selectionHandles: ISelectionId[]) {
-      this.map?.eachLayer((layer: any) => {
-        if (layer.feature instanceof OSMapsGeoJson) {
-          const feature = layer.feature as OSMapsGeoJson;
+      const eachFeatureLayer = (callback: (layer: any) => void) => {
+        this.leafletPointsLayer?.eachLayer(callback);
+        this.leafletFeaturesLayer?.eachLayer(callback);
+      };
 
-          const isSelected = feature.selectionHandle
-            ? selectionHandles.some(handle =>
-                (feature.selectionHandle as unknown as powerbi.visuals.ISelectionId)
-                  .equals(handle as unknown as powerbi.visuals.ISelectionId)
-              )
-            : false;
+      eachFeatureLayer((layer: any) => {
+        if (!(layer.feature instanceof OSMapsGeoJson)) return;
 
-          feature.isSelected = isSelected;
+        const feature = layer.feature as OSMapsGeoJson;
+        const isSelected = feature.selectionHandle
+          ? selectionHandles.some(handle =>
+              (feature.selectionHandle as unknown as powerbi.visuals.ISelectionId)
+                .equals(handle as unknown as powerbi.visuals.ISelectionId)
+            )
+          : false;
 
-          layer.setStyle({
-            fillColor: isSelected
-              ? feature.selectionColour
-              : feature.fillColour,
-            color: isSelected
-              ? feature.selectionBorderColour
-              : feature.borderColour,
-            fillOpacity: feature.opacity * this.visualFillOpacity,
-          });
-        }
+        feature.isSelected = isSelected;
+
+        layer.setStyle({
+          fillColor: isSelected ? feature.selectionColour : feature.fillColour,
+          color: isSelected ? feature.selectionBorderColour : feature.borderColour,
+          fillOpacity: feature.opacity * this.visualFillOpacity,
+        });
       });
     }
-
 
 
   /**
@@ -976,6 +1215,7 @@ export class OSPowerBIMapManager {
             if (wasSelected) {
               // Clicking the selected feature again clears selection and closes its popup.
               await this.hostVisual.applySelection([]);
+              this.updateSelection([]);
               this.map?.closePopup();
               return;
             } else {
@@ -986,6 +1226,7 @@ export class OSPowerBIMapManager {
                 color: feature.selectionBorderColour,
               });
               await this.hostVisual.applySelection([feature.selectionHandle]);
+              this.updateSelection([feature.selectionHandle]);
             }
           }
           // On click, we want to show a popup with content from all features at the clicked point, not just the top one, 
@@ -1008,6 +1249,7 @@ export class OSPowerBIMapManager {
           allFeatures = allFeatures.concat(duplicateGeomFeatures)
 
           // show paged popup if overlapping or duplicate features
+          this.UIManager.CloseSelectionPopup();
           const popup = this.createPaginatedPopup(allFeatures, e.latlng, 
             this.settings.mapSettingsCard.hideDefaultPopupFields, this.settings.mapSettingsCard.ShowIdentifierInPopup);
           this.map.openPopup(popup);

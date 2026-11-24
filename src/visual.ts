@@ -187,7 +187,9 @@ export class OSPowerBIVisual implements IVisual {
     if (selectionHandles.length === 0){
       await this.selectionManager.clear();
     }
-    else {await this.selectionManager.select(selectionHandles);}
+    else {
+      await this.selectionManager.select(selectionHandles);
+    }
   }
 
       /**

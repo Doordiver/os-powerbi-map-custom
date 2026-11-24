@@ -262,7 +262,8 @@ export class OSMapsGeoJSONBuilder {
       categorySelections = {};
     }
 
-    const newPolygonSet = new OSMapsCartographicFeatureCollection(
+    let newPolygonSet: OSMapsCartographicFeatureCollection;
+    newPolygonSet = new OSMapsCartographicFeatureCollection(
       cartoSettings,
       unscaledSymbol,
       categoryColourOverrides,
@@ -277,6 +278,27 @@ export class OSMapsGeoJSONBuilder {
       (fieldName, categories) => {
         categorySelections[fieldName] = categories;
         this.UIManager.visual.persistDataToCard("featureCategorySelections", categorySelections);
+
+        const matchingFeatures = newPolygonSet.geojsons.filter(feature =>
+          feature.colourSource === fieldName &&
+          feature.fillColour != null &&
+          categories.includes(String(feature.fillColour))
+        );
+
+        void this.UIManager.mapManager.selectFeaturesAndShowPopup(matchingFeatures);
+      },
+      (fieldName, category) => {
+        const matchingFeatures = newPolygonSet.geojsons.filter(feature =>
+          feature.colourSource === fieldName &&
+          feature.fillColour != null &&
+          String(feature.fillColour) === category
+        );
+
+        void this.UIManager.mapManager.selectFeaturesAndShowPopup(
+          matchingFeatures,
+          category,
+          newPolygonSet.getCategoryColour(fieldName, category)
+        );
       }
     );
     // Assume that there can only be data in one of feature_geometry, gss, or geojson_ref. 

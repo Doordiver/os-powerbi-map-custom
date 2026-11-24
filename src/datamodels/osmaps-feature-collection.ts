@@ -53,6 +53,9 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
   /** Persists a changed category selection. */
   private onCategorySelectionChange?: (fieldName: string, categories: string[]) => void;
 
+  /** Handles an individual category click. */
+  private onCategoryClick?: (fieldName: string, category: string) => void;
+
   /**  required property of GeoJSON FeatureCollection */
   public type: "FeatureCollection"
   
@@ -71,6 +74,17 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
 
   public get length_unique_geoms() { return this.geometryHashes.size; }
   public get isCategorical() { return this.colour_scaler instanceof ColourCategoricalScaler }
+
+  /** Returns the displayed legend colour for a category, including manual overrides. */
+  public getCategoryColour(fieldName: string, category: string): string | null {
+    if (!(this.colour_scaler instanceof ColourCategoricalScaler)) {
+      return null;
+    }
+    return this.colour_scaler.getColourForCategory(
+      category,
+      this.categoryColourOverrides[fieldName] || {}
+    );
+  }
   
   constructor(
     cartoSettings: ScalableLayerCartoSettings,
@@ -78,12 +92,14 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
     categoryColourOverrides: { [fieldName: string]: { [category: string]: string } } = {},
     onCategoryColourChange?: (fieldName: string, category: string, colour: string) => void,
     categorySelections: { [fieldName: string]: string[] } = {},
-    onCategorySelectionChange?: (fieldName: string, categories: string[]) => void
+    onCategorySelectionChange?: (fieldName: string, categories: string[]) => void,
+    onCategoryClick?: (fieldName: string, category: string) => void
   ) {
     this.categoryColourOverrides = categoryColourOverrides || {};
     this.onCategoryColourChange = onCategoryColourChange;
     this.categorySelections = categorySelections || {};
     this.onCategorySelectionChange = onCategorySelectionChange;
+    this.onCategoryClick = onCategoryClick;
     this.updateCartoSettings(cartoSettings);
     if (defaultSymbolConfig){
       this.unmatched_symbol_simulator = new ConfiguredSymbolSimulator(defaultSymbolConfig);
@@ -111,6 +127,9 @@ export class OSMapsCartographicFeatureCollection implements GeoJSON.FeatureColle
         selectedCategories: this.colour_scaler instanceof ColourCategoricalScaler
           ? this.colour_scaler.getSelectedCategories()
           : this.categorySelections[colourFieldName] || [],
+        onCategoryClick: category => {
+          this.onCategoryClick?.(colourFieldName, category);
+        },
         onCategorySelectionChange: categories => {
           this.categorySelections[colourFieldName] = categories;
           this.onCategorySelectionChange?.(colourFieldName, categories);
